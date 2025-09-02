@@ -49,7 +49,7 @@ const NumCards = 52;
 // Card 56 is the blank-back card (used to draw stacks with no cards)
 // Card 57 is the fancy-back card (not used)
 const CardBacks = {
-    Clubs: 62,
+    Clubs: 52,
     Diamonds: 53,
     Spades: 54,
     Hearts: 55,
@@ -57,11 +57,11 @@ const CardBacks = {
     Fancy: 57
 };
 // Total number of card images
-const TotalNumCards = CardBacks.Fancy;
+const TotalNumCards = CardBacks.Fancy + 1;
 // Total number of card columns
 const NumColumns = 8;
 // Number of "free cells"
-const NumFreeCells = 84;
+const NumFreeCells = 4;
 // Number of ace cards
 const NumAces = 4;
 // Types of cards
@@ -179,11 +179,13 @@ class Card {
     enclosesXY(x, y) {
         return this.rect.enclosesXY(x, y);
     }
-    // TODO: drawCard
-    // TODO: setTop
-    // TODO: drawCardImg
     setSelection(x, y) {
         this.selected = this.rect.enclosesXY(x, y);
+    }
+    draw(e) {
+        const num = this.cardNum >= 0 ? this.cardNum : CardBacks.Blank;
+        console.log("draw card %o at %o, %o", num, this.rect.left, this.rect.top);
+        e.context.drawImage(e.cards, CardGraphicsWidth * num, 0, CardGraphicsWidth, CardGraphicsHeight, this.rect.left, this.rect.top, this.rect.width, this.rect.height);
     }
 }
 class CardStack {
@@ -275,6 +277,36 @@ class CardStack {
     setSelection(x, y) {
         this.getCard(-1)?.setSelection(x, y);
     }
+    draw(e) {
+        if (this.cards.length > 0) {
+            console.log("drawing a stack of %o cards at %o,%o", this.cards.length, this.rect.left, this.rect.top);
+            for (let card of this.cards) {
+                card.draw(e);
+            }
+        }
+        else {
+            let back = 0;
+            switch (this.stackSuit) {
+                case Suit.Clubs:
+                    back = CardBacks.Clubs;
+                    break;
+                case Suit.Diamonds:
+                    back = CardBacks.Diamonds;
+                    break;
+                case Suit.Spades:
+                    back = CardBacks.Spades;
+                    break;
+                case Suit.Hearts:
+                    back = CardBacks.Hearts;
+                    break;
+                default:
+                    back = CardBacks.Blank;
+                    break;
+            }
+            console.log("drawing a stack with back %o at %o,%o", back, this.rect.left, this.rect.top);
+            e.context.drawImage(e.cards, CardGraphicsWidth * back, 0, CardGraphicsWidth, CardGraphicsHeight, this.rect.left, this.rect.top, this.rect.width, this.rect.height);
+        }
+    }
 }
 // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L941
 class FreeCell {
@@ -297,17 +329,17 @@ class FreeCell {
         // Set up the free cells (4 cells in top left of screen)
         this.freecellStacks = [];
         for (let i = 0; i < NumFreeCells; i++) {
-            this.freecellStacks[i] = new CardStack(0, 0, Suit.Undefined, 0, StackType.Freecell);
+            this.freecellStacks.push(new CardStack(0, 0, Suit.Undefined, 0, StackType.Freecell));
         }
         // Set up the "aces" (4 cells in top right of screen); order is important
         this.acesStacks = [];
         for (let i = 0; i < NumAces; i++) {
-            this.acesStacks[i] = new CardStack(0, 0, i, 0, StackType.Ace);
+            this.acesStacks.push(new CardStack(0, 0, i, 0, StackType.Ace));
         }
         // Set up the columns
         this.mainCardStacks = [];
         for (let i = 0; i < NumColumns; i++) {
-            this.mainCardStacks[i] = new CardStack(0, 0, Suit.Undefined, 0, StackType.Regular);
+            this.mainCardStacks.push(new CardStack(0, 0, Suit.Undefined, 0, StackType.Regular));
         }
         // Set up the card deck
         for (let i = 0; i < NumCards; i++) {
@@ -366,6 +398,7 @@ class FreeCell {
         this.acesStacks.forEach(x => x.clearStack());
         this.freecellStacks.forEach(x => x.clearStack());
         this.mainCardStacks.forEach(x => x.clearStack());
+        this.setCardRects();
     }
     //  Get a rect that encloses all the cards in the given list of CardStacks
     getStackListEnclosingRect(cardStackList) {
@@ -386,11 +419,11 @@ class FreeCell {
         cardHorizSpacing = this.screenWidth / 8.5;
         this.freecellStacks.forEach(function (stack, i) {
             const x = Math.round(i * cardHorizSpacing + (CardGraphicsHeight - CardGraphicsWidth) / 2);
-            stack.setLeftTop(x, VertSeparatorWidth + VertSeparatorWidth + CardGraphicsHeight);
+            stack.setLeftTop(x, VertSeparatorWidth);
         });
         this.acesStacks.forEach(function (stack, i) {
             const x = Math.round((i + NumFreeCells + 0.5) * cardHorizSpacing + (CardGraphicsHeight - CardGraphicsWidth) / 2);
-            stack.setLeftTop(x, VertSeparatorWidth + VertSeparatorWidth + CardGraphicsHeight);
+            stack.setLeftTop(x, VertSeparatorWidth);
         });
     }
     // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L1676
@@ -525,5 +558,43 @@ class FreeCell {
                 this.setCardSelection(destType, destStack, destStack.rect, x, y);
         }
     }
+    draw(e) {
+        this.forEachStack(stack => { stack.draw(e); });
+    }
 }
+// Here is the wholly original code in order to
+// draw the webpage and interact with the game
+class DrawArgs {
+    context;
+    cards;
+    constructor(context, cards) {
+        this.context = context;
+        this.cards = cards;
+    }
+}
+function loadImage(src) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = src;
+    });
+}
+async function main() {
+    const gameCanvas = document.getElementById("gameCanvas");
+    const cards = await loadImage("cards.png");
+    // init the freecell game
+    const freecell = new FreeCell();
+    freecell.setupCards(true);
+    function draw() {
+        const ctx = gameCanvas.getContext("2d");
+        ctx.fillStyle = "#006600";
+        ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+        ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+        const e = new DrawArgs(ctx, cards);
+        freecell.draw(e);
+    }
+    draw();
+}
+document.addEventListener("DOMContentLoaded", main);
 //# sourceMappingURL=freecell.js.map
