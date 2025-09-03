@@ -204,15 +204,10 @@ class Card {
         return this.rect.enclosesXY(x, y);
     }
 
-    public setSelection(x: number, y: number) {
-        this.selected = this.rect.enclosesXY(x, y);
-    }
-
     public draw(e: DrawArgs) {
         const num = this.cardNum >= 0 ? this.cardNum : CardBacks.Blank;
-        console.log("draw card %o at %o, %o", num, this.rect.left, this.rect.top);
         e.context.drawImage(
-            e.cards, CardGraphicsWidth * num, 0,
+            e.cards, CardGraphicsWidth * num, this.selected ? CardGraphicsHeight : 0,
             CardGraphicsWidth, CardGraphicsHeight,
             this.rect.left, this.rect.top,
             this.rect.width, this.rect.height
@@ -225,17 +220,18 @@ class CardStack {
     // The CardStack contains a list of Card objects, possesses an onscreen location
     // The CardStack's yOffset controls the vertical offset of cards in the stack
 
-    public cards: Card[];
+    public cards: Card[] = [];
     public rect: Rect;
+    public yOffset: number = 0;
 
     public constructor(
         public left: number,
         public top: number,
         public stackSuit: Suit,
-        public yOffset: number,
         public type: StackType
     ) {
-        this.rect = new Rect(left, top, CardGraphicsWidth, CardGraphicsHeight);
+        //this.rect = new Rect(left, top, CardGraphicsWidth, CardGraphicsHeight);
+        this._reposition();
     }
 
     public getNumCards(): number {
@@ -262,11 +258,7 @@ class CardStack {
     public setLeftTop(left: number, top: number) {
         this.left = left;
         this.top = top;
-
-        if (this.yOffset > 0) {
-            this.yOffset = CardGraphicsHeight / 4.8;
-        }
-
+        this.yOffset = this.type === StackType.Regular ? CardGraphicsHeight / 4.8 : 0;
         this._reposition();
     }
 
@@ -279,7 +271,7 @@ class CardStack {
         // Gets the card in a specific position on the card stack
         // negative numbers count from the end (ala Python)
 
-        if (cardIndex < 0) cardIndex = this.cards.length - cardIndex;
+        if (cardIndex < 0) cardIndex = this.cards.length + cardIndex;
         return (cardIndex < 0 || cardIndex >= this.cards.length) ? null : this.cards[cardIndex];
     }
 
@@ -322,20 +314,16 @@ class CardStack {
         }
     }
 
-    public setSelection(x: number, y: number) {
-        this.getCard(-1)?.setSelection(x, y);
-    }
-
     public draw(e: DrawArgs) {
         if (this.cards.length > 0) {
-            console.log("drawing a stack of %o cards at %o,%o", this.cards.length, this.rect.left, this.rect.top);
+            //console.log("drawing a stack of %o cards at %o,%o", this.cards.length, this.rect.left, this.rect.top);
             for (let card of this.cards) {
                 card.draw(e);
             }
         } else {
-            let back : number = 0;
+            let back: number = 0;
 
-            switch (this.stackSuit){
+            switch (this.stackSuit) {
                 case Suit.Clubs: back = CardBacks.Clubs; break;
                 case Suit.Diamonds: back = CardBacks.Diamonds; break;
                 case Suit.Spades: back = CardBacks.Spades; break;
@@ -343,7 +331,7 @@ class CardStack {
                 default: back = CardBacks.Blank; break;
             }
 
-            console.log("drawing a stack with back %o at %o,%o", back, this.rect.left, this.rect.top);
+            //console.log("drawing a stack with back %o at %o,%o", back, this.rect.left, this.rect.top);
 
             e.context.drawImage(
                 e.cards, CardGraphicsWidth * back, 0,
@@ -383,24 +371,24 @@ class FreeCell {
         // Set up the free cells (4 cells in top left of screen)
         this.freecellStacks = [];
         for (let i = 0; i < NumFreeCells; i++) {
-            this.freecellStacks.push(new CardStack(0, 0, Suit.Undefined, 0, StackType.Freecell));
+            this.freecellStacks.push(new CardStack(0, 0, Suit.Undefined, StackType.Freecell));
         }
 
         // Set up the "aces" (4 cells in top right of screen); order is important
         this.acesStacks = [];
         for (let i = 0; i < NumAces; i++) {
-            this.acesStacks.push(new CardStack(0, 0, i, 0, StackType.Ace));
+            this.acesStacks.push(new CardStack(0, 0, i, StackType.Ace));
         }
 
         // Set up the columns
         this.mainCardStacks = [];
         for (let i = 0; i < NumColumns; i++) {
-            this.mainCardStacks.push(new CardStack(0, 0, Suit.Undefined, 0, StackType.Regular));
+            this.mainCardStacks.push(new CardStack(0, 0, Suit.Undefined, StackType.Regular));
         }
 
         // Set up the card deck
         for (let i = 0; i < NumCards; i++) {
-            this.startingCardOrder[i] = i;
+            this.startingCardOrder.push(i);
         }
     }
 
@@ -451,7 +439,7 @@ class FreeCell {
             this.undoStack = [];
             this.redoStack = [];
 
-            for (let i = this.startingCardOrder.length; i > 0; i--) {
+            for (let i = this.startingCardOrder.length - 1; i > 0; i--) {
                 let j = Math.floor(Math.random() * i);
                 let temp = this.startingCardOrder[i];
                 this.startingCardOrder[i] = this.startingCardOrder[j];
@@ -462,6 +450,12 @@ class FreeCell {
         this.acesStacks.forEach(x => x.clearStack());
         this.freecellStacks.forEach(x => x.clearStack());
         this.mainCardStacks.forEach(x => x.clearStack());
+
+        // deal out cards to main stacks
+        console.log("starting card order: %o", this.startingCardOrder);
+        for (let i = 0; i < this.startingCardOrder.length; i++) {
+            this.mainCardStacks[i % NumColumns].pushCard(new Card(this.startingCardOrder[i], new Rect(0, 0, 0, 0)));
+        }
 
         this.setCardRects();
     }
@@ -508,12 +502,15 @@ class FreeCell {
         this.selectedCardType = StackType.Undefined;
     }
 
-    public setCardSelection(stackType: StackType, cardStack: CardStack, cardRect: Rect, x: number, y: number) {
+    public setCardSelection(stackType: StackType, cardStack: CardStack, cardRect: Rect) {
+        this.clearCardSelection();
+
         if (cardStack.getNumCards() > 0) {
-            this.setSelections(x, y);
             this.selectedCardRect = cardRect;
             this.selectedCardType = stackType;
             this.selectedCardStack = cardStack;
+
+            cardStack.getCard(-1)!.selected = true;
         }
     }
 
@@ -533,13 +530,6 @@ class FreeCell {
         this.acesStacks.forEach(x => x.clearSelection());
         this.mainCardStacks.forEach(x => x.clearSelection());
     }
-
-    public setSelections(x: number, y: number) {
-        this.freecellStacks.forEach(s => s.setSelection(x, y));
-        this.acesStacks.forEach(s => s.setSelection(x, y));
-        this.mainCardStacks.forEach(s => s.setSelection(x, y));
-    }
-
     // Determine the card/stack at a given (x,y); return the type, rect, cardStack of the target
     public xyToCardStackInfo(x: number, y: number): [StackType, CardStack | null] {
         let hitType = StackType.Undefined;
@@ -568,7 +558,7 @@ class FreeCell {
         }
         else if (this.selectedCardType === StackType.Undefined || !this.selectedCardStack) {
             // There was no previous selection, so try
-            this.setCardSelection(destType, destStack, destStack.rect, x, y);
+            this.setCardSelection(destType, destStack, destStack.rect);
         }
         else {
             // A card is currenlty selected, so see if it can be moved to the target
@@ -588,7 +578,7 @@ class FreeCell {
             let runLength = 0;
             for (let i = 0; i < srcNumCards; i++) {
                 let [cardVal, , cardSuitColor] = this.selectedCardStack.getCardValueSuitColor(srcNumCards - i - 1);
-                if (cardVal === srcCardVal + i && cardSuitColor === colorFlip(cardSuitColor)) {
+                if (cardVal === srcCardVal + i && cardSuitColor === colorFlip(srcSuitColor)) {
                     runLength++;
                 } else {
                     break;
@@ -599,6 +589,8 @@ class FreeCell {
             const srcRunMeetsDst = destSrcDelta > 0 && runLength >= destSrcDelta;
 
             function columnMove(count: number) {
+                console.log("columnMove(%o)", count);
+
                 const tempStacks: number[] = [];
 
                 for (let i = 0; i < count; i++) {
@@ -642,7 +634,7 @@ class FreeCell {
 
             // Clear selection
             this.clearCardSelection();
-            if (!moved) this.setCardSelection(destType, destStack, destStack.rect, x, y);
+            if (!moved) this.setCardSelection(destType, destStack, destStack.rect);
         }
     }
 
@@ -689,6 +681,13 @@ async function main() {
         const e = new DrawArgs(ctx, cards);
         freecell.draw(e);
     }
+
+    gameCanvas.addEventListener("click", function (e: MouseEvent) {
+        const x = e.offsetX;
+        const y = e.offsetY;
+        freecell.button_press_event(x, y);
+        draw();
+    });
 
     draw();
 }
