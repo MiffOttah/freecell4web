@@ -30,8 +30,6 @@ var Suit;
     Suit[Suit["Hearts"] = 3] = "Hearts";
     Suit[Suit["Undefined"] = -1] = "Undefined";
 })(Suit || (Suit = {}));
-const SuitNames = ["Clubs", "Diamonds", "Spades", "Hearts"];
-const CardNmaes = ["Ace", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Knight", "Queen", "King"];
 const SuitSym = ["C", "D", "S", "H"];
 const CardSym = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K"];
 // Suit colors
@@ -72,7 +70,6 @@ var StackType;
     StackType[StackType["Regular"] = 2] = "Regular";
     StackType[StackType["Undefined"] = -1] = "Undefined";
 })(StackType || (StackType = {}));
-const StackTypeName = ["FreeCell", "AceStack", "PlayStack"];
 const CardGraphicsWidth = 73;
 const CardGraphicsHeight = 97;
 function suit_to_color(suit) {
@@ -92,32 +89,6 @@ function colorFlip(color) {
         case SuitColor.Black: return SuitColor.Red;
         case SuitColor.Red: return SuitColor.Black;
         default: return SuitColor.Undefined;
-    }
-}
-// https://github.com/lufebe16/freecell4maemo/blob/master/src/freecell.py#L181
-function cardnum_to_sym(cn) {
-    if (cn < NumCards) {
-        let cc = cn % CardsPerSuit;
-        let cs = Math.floor(cn / CardsPerSuit);
-        return CardSym[cc] + SuitSym[cs];
-    }
-    else {
-        return "";
-    }
-}
-function cardsym_to_num(ss) {
-    let cc = Math.max(CardSym.indexOf(ss[0]), 0);
-    let cs = Math.max(SuitSym.indexOf(ss[1]), 0);
-    return cs * CardsPerSuit + cc;
-}
-function cardnum_to_text(cn) {
-    if (cn < NumCards) {
-        let cc = cn % CardsPerSuit;
-        let cs = Math.floor(cn / CardsPerSuit);
-        return `${SuitNames[cc]} ${CardNmaes[cs]}`;
-    }
-    else {
-        return "";
     }
 }
 // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L525
@@ -141,20 +112,6 @@ class Rect {
     enclosesXY(x, y) {
         // Determine if a point lies within the Rect
         return ((x >= this.left) && (x < this.left + this.width) && (y >= this.top) && (y < this.top + this.height));
-    }
-    unionWith(otherRect) {
-        // Modify the Rect to include another Rect
-        let left = Math.min(this.left, otherRect.left);
-        let right = Math.max(this.left + this.width, otherRect.left + otherRect.width);
-        let top = Math.min(this.top, otherRect.top);
-        let bottom = Math.max(this.top + this.height, otherRect.top + otherRect.height);
-        this.left = left;
-        this.top = top;
-        this.width = (right - left);
-        this.height = (bottom - top);
-    }
-    clone() {
-        return new Rect(this.left, this.top, this.width, this.height);
     }
 }
 // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L583
@@ -184,7 +141,7 @@ class Card {
         e.context.drawImage(e.cards, CardGraphicsWidth * num, this.selected ? CardGraphicsHeight : 0, CardGraphicsWidth, CardGraphicsHeight, this.rect.left, this.rect.top, this.rect.width, this.rect.height);
     }
     toString() {
-        return CardSym[this.getValue()] + SuitSym[this.getSuit()];
+        return "A23456789TJQK"[this.getValue()] + "CDSH"[this.getSuit()];
     }
     // If this card will "accept" a card after it (i.e., if this card is the opposite color too and one rank above nextCard)
     willAcceptCard(nextCard) {
@@ -284,13 +241,7 @@ class CardStack {
         }
     }
     draw(e) {
-        if (this.cards.length > 0) {
-            //console.log("drawing a stack of %o cards at %o,%o", this.cards.length, this.rect.left, this.rect.top);
-            for (let card of this.cards) {
-                card.draw(e);
-            }
-        }
-        else {
+        if (this.cards.length === 0) {
             let back = 0;
             switch (this.stackSuit) {
                 case Suit.Clubs:
@@ -309,8 +260,17 @@ class CardStack {
                     back = CardBacks.Blank;
                     break;
             }
-            //console.log("drawing a stack with back %o at %o,%o", back, this.rect.left, this.rect.top);
             e.context.drawImage(e.cards, CardGraphicsWidth * back, 0, CardGraphicsWidth, CardGraphicsHeight, this.rect.left, this.rect.top, this.rect.width, this.rect.height);
+        }
+        else if (this.yOffset === 0) {
+            // optimize drawing by only drawing the top card when there is no spread
+            // (i.e. in the foundations)
+            this.getCard(-1)?.draw(e);
+        }
+        else {
+            for (let card of this.cards) {
+                card.draw(e);
+            }
         }
     }
 }
@@ -326,10 +286,8 @@ class FreeCell {
     // let the canvas itself scale (since we're still
     // limited by the raster card images)
     screenWidth = 730;
-    // Track the currently selected card
-    selectedCardRect = null;
+    // Track the currently selected card (stack)
     selectedCardStack = null;
-    selectedCardType = StackType.Undefined;
     startingCardOrder = [];
     redrawRequested = false;
     constructor() {
@@ -355,28 +313,6 @@ class FreeCell {
     }
     requestRedraw() {
         this.redrawRequested = true;
-    }
-    compare_stack(stack) {
-        for (let i = 0; i < this.freecellStacks.length; i++) {
-            if (this.freecellStacks[i] === stack)
-                return [StackType.Freecell, i];
-        }
-        for (let i = 0; i < this.acesStacks.length; i++) {
-            if (this.acesStacks[i] === stack)
-                return [StackType.Ace, i];
-        }
-        for (let i = 0; i < this.mainCardStacks.length; i++) {
-            if (this.mainCardStacks[i] === stack)
-                return [StackType.Regular, i];
-        }
-        return [StackType.Undefined, -1];
-    }
-    retrieve_stack(stack) {
-        switch (stack) {
-            case StackType.Freecell: return this.freecellStacks;
-            case StackType.Ace: return this.acesStacks;
-            default: return this.mainCardStacks;
-        }
     }
     forEachStack(callback) {
         for (let i = 0; i < this.freecellStacks.length; i++) {
@@ -419,20 +355,19 @@ class FreeCell {
         }
         this.forEachStack(x => x.clearStack());
         // deal out cards to main stacks
-        //console.log("starting card order: %o", this.startingCardOrder);
         for (let i = 0; i < this.startingCardOrder.length; i++) {
             this.mainCardStacks[i % NumColumns].pushCard(new Card(this.startingCardOrder[i], new Rect(0, 0, 0, 0)));
         }
         this.setCardRects();
     }
     //  Get a rect that encloses all the cards in the given list of CardStacks
-    getStackListEnclosingRect(cardStackList) {
-        let rect = cardStackList[0].rect.clone();
-        for (let i = 0; i < cardStackList.length; i++) {
-            rect.unionWith(cardStackList[i].rect);
-        }
-        return rect;
-    }
+    // public getStackListEnclosingRect(cardStackList: CardStack[]): Rect {
+    //     let rect = cardStackList[0].rect.clone();
+    //     for (let i = 0; i < cardStackList.length; i++) {
+    //         rect.unionWith(cardStackList[i].rect);
+    //     }
+    //     return rect;
+    // }
     // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L1572
     // Set the position of all card stacks; this is done in response to a configure event
     setCardRects() {
@@ -455,15 +390,15 @@ class FreeCell {
     // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L1676
     clearCardSelection() {
         this.clearSelecions();
-        this.selectedCardRect = null;
+        //this.selectedCardRect = null;
         this.selectedCardStack = null;
-        this.selectedCardType = StackType.Undefined;
+        //this.selectedCardType = StackType.Undefined;
     }
     setCardSelection(stackType, cardStack, cardRect) {
         this.clearCardSelection();
         if (cardStack.getNumCards() > 0) {
-            this.selectedCardRect = cardRect;
-            this.selectedCardType = stackType;
+            //this.selectedCardRect = cardRect;
+            //this.selectedCardType = stackType;
             this.selectedCardStack = cardStack;
             cardStack.getCard(-1).selected = true;
         }
@@ -484,7 +419,7 @@ class FreeCell {
         this.acesStacks.forEach(x => x.clearSelection());
         this.mainCardStacks.forEach(x => x.clearSelection());
         this.selectedCardStack = null;
-        this.selectedCardType = StackType.Undefined;
+        // this.selectedCardType = StackType.Undefined;
     }
     // Determine the card/stack at a given (x,y); return the type, rect, cardStack of the target
     xyToCardStackInfo(x, y) {
@@ -508,7 +443,7 @@ class FreeCell {
             // Didn't click on a valid target, so clear the previous click selection and bail
             this.clearSelecions();
         }
-        else if (this.selectedCardType === StackType.Undefined || !this.selectedCardStack) {
+        else if (!this.selectedCardStack) {
             // There was no previous selection, so try
             this.setCardSelection(destType, destStack, destStack.rect);
         }
