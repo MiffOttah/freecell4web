@@ -183,6 +183,20 @@ class Card {
         const num = this.cardNum >= 0 ? this.cardNum : CardBacks.Blank;
         e.context.drawImage(e.cards, CardGraphicsWidth * num, this.selected ? CardGraphicsHeight : 0, CardGraphicsWidth, CardGraphicsHeight, this.rect.left, this.rect.top, this.rect.width, this.rect.height);
     }
+    toString() {
+        return CardSym[this.getValue()] + SuitSym[this.getSuit()];
+    }
+    // If this card will "accept" a card after it (i.e., if this card is the opposite color too and one rank above nextCard)
+    willAcceptCard(nextCard) {
+        if (!nextCard)
+            return false;
+        if (this.getSuitColor() === nextCard.getSuitColor())
+            return false;
+        const value = this.getValue();
+        if (value === 0)
+            return false; // aces can never accept anything
+        return value === (nextCard.getValue() + 1);
+    }
 }
 class CardStack {
     left;
@@ -228,6 +242,7 @@ class CardStack {
     getCard(cardIndex) {
         // Gets the card in a specific position on the card stack
         // negative numbers count from the end (ala Python)
+        // console.log("getCard(%o) of %s", cardIndex, this.cards.map(x => x.toString()).join(','));
         if (cardIndex < 0)
             cardIndex = this.cards.length + cardIndex;
         return (cardIndex < 0 || cardIndex >= this.cards.length) ? null : this.cards[cardIndex];
@@ -390,7 +405,7 @@ class FreeCell {
         this.freecellStacks.forEach(x => x.clearStack());
         this.mainCardStacks.forEach(x => x.clearStack());
         // deal out cards to main stacks
-        console.log("starting card order: %o", this.startingCardOrder);
+        //console.log("starting card order: %o", this.startingCardOrder);
         for (let i = 0; i < this.startingCardOrder.length; i++) {
             this.mainCardStacks[i % NumColumns].pushCard(new Card(this.startingCardOrder[i], new Rect(0, 0, 0, 0)));
         }
@@ -452,6 +467,8 @@ class FreeCell {
         this.freecellStacks.forEach(x => x.clearSelection());
         this.acesStacks.forEach(x => x.clearSelection());
         this.mainCardStacks.forEach(x => x.clearSelection());
+        this.selectedCardStack = null;
+        this.selectedCardType = StackType.Undefined;
     }
     // Determine the card/stack at a given (x,y); return the type, rect, cardStack of the target
     xyToCardStackInfo(x, y) {
@@ -468,9 +485,9 @@ class FreeCell {
     // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L1867
     // This is the "bug, ugly one" -- all the gameplay rules are implemented here...
     // (I may end up refacotring this once I verify the TS port works.)
-    button_press_event(x, y) {
+    button_press_event(x, y, overrideCardLogic = false) {
         const [destType, destStack] = this.xyToCardStackInfo(x, y);
-        if (destType === StackType.Undefined || !destStack) {
+        if (destType === StackType.Undefined || !destStack || destStack === this.selectedCardStack) {
             // Didn't click on a valid target, so clear the previous click selection and bail
             this.clearSelecions();
         }
@@ -481,40 +498,45 @@ class FreeCell {
         else {
             // A card is currenlty selected, so see if it can be moved to the target
             let moved = false;
-            const srcNumCards = this.selectedCardStack.getNumCards();
+            // const srcNumCards = this.selectedCardStack.getNumCards();
             const [srcCardVal, srcSuit, srcSuitColor] = this.selectedCardStack.getCardValueSuitColor(-1);
             const destNumCards = destStack.getNumCards();
             const [destCardVal, destSuit, destSuitColor] = destStack.getCardValueSuitColor(-1);
-            const destSrcDelta = destCardVal - srcCardVal;
             let numFreeCells = 0;
             this.freecellStacks.forEach(s => { if (s.getNumCards() <= 0)
                 numFreeCells++; });
-            let runLength = 0;
-            for (let i = 0; i < srcNumCards; i++) {
-                let [cardVal, , cardSuitColor] = this.selectedCardStack.getCardValueSuitColor(srcNumCards - i - 1);
-                if (cardVal === srcCardVal + i && cardSuitColor === colorFlip(srcSuitColor)) {
+            // I couldn't get the original code to work when porting over from Python, so I just winged a rewrite.
+            let runLength = 1;
+            let topCardOfRun = this.selectedCardStack.getCard(-1);
+            while (true) {
+                let aboveCard = this.selectedCardStack.getCard(-1 - runLength);
+                if (aboveCard && aboveCard.willAcceptCard(topCardOfRun)) {
+                    topCardOfRun = aboveCard;
                     runLength++;
                 }
                 else {
                     break;
                 }
             }
-            const suitColorsWork = srcSuitColor === colorFlip(destSuitColor);
-            const srcRunMeetsDst = destSrcDelta > 0 && runLength >= destSrcDelta;
+            if (runLength > numFreeCells + 1)
+                runLength = numFreeCells + 1;
+            const this2 = this;
             function columnMove(count) {
-                console.log("columnMove(%o)", count);
+                console.log("moving a column of %d card(s)", count);
                 const tempStacks = [];
-                for (let i = 0; i < count; i++) {
+                for (let i = 0; i < count - 1; i++) {
                     for (let j = 0; j < NumFreeCells; j++) {
-                        if (this.freecellStacks[j].getNumCards() <= 0) {
-                            this.moveCard(this.selectedCardStack, this.freecellStacks[j]);
+                        if (this2.freecellStacks[j].getNumCards() <= 0) {
+                            this2.moveCard(this2.selectedCardStack, this2.freecellStacks[j]);
                             tempStacks.unshift(j);
+                            break;
                         }
                     }
                 }
-                this.moveCard(this.selectedCardStack, destStack);
+                console.log("used %o tempstacks to move %o card(s)", tempStacks.length, count);
+                this2.moveCard(this2.selectedCardStack, destStack);
                 for (let s of tempStacks)
-                    this.moveCard(this.freecellStacks[s], destStack);
+                    this2.moveCard(this2.freecellStacks[s], destStack);
             }
             if (destType === StackType.Freecell) {
                 // Move selected card to a free cell, if it is open
@@ -537,13 +559,22 @@ class FreeCell {
             }
             else if (destNumCards <= 0 && runLength > 1) {
                 // Move multiple cards to an empty stack
-                columnMove(Math.min(numFreeCells, runLength - 1));
+                columnMove(Math.min(numFreeCells, runLength) + 1);
                 moved = true;
             }
-            else if (srcRunMeetsDst && suitColorsWork) {
+            else {
                 // Move a column onto another card (column could be just a single card, really)
-                columnMove(destSrcDelta - 1);
-                moved = true;
+                let destCard = destStack.getCard(-1);
+                while (runLength > 0 && !moved) {
+                    let testCard = this.selectedCardStack.getCard(-runLength);
+                    if (destCard.willAcceptCard(testCard) || (runLength === 1 && overrideCardLogic)) {
+                        columnMove(runLength);
+                        moved = true;
+                    }
+                    else {
+                        runLength--;
+                    }
+                }
             }
             // Clear selection
             this.clearCardSelection();
@@ -590,7 +621,7 @@ async function main() {
     gameCanvas.addEventListener("click", function (e) {
         const x = e.offsetX;
         const y = e.offsetY;
-        freecell.button_press_event(x, y);
+        freecell.button_press_event(x, y, e.shiftKey);
         draw();
     });
     draw();
