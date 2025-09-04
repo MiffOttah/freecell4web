@@ -160,12 +160,12 @@ class Rect {
 // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L583
 class Card {
     cardNum;
-    rect;
     cardIsMoving = false;
     selected = false;
-    constructor(cardNum, rect) {
+    rect;
+    constructor(cardNum, rect = null) {
         this.cardNum = cardNum;
-        this.rect = rect;
+        this.rect = rect || new Rect(0, 0, 0, 0);
     }
     getSuit() {
         return Math.floor(this.cardNum / CardsPerSuit);
@@ -331,6 +331,7 @@ class FreeCell {
     selectedCardStack = null;
     selectedCardType = StackType.Undefined;
     startingCardOrder = [];
+    redrawRequested = false;
     constructor() {
         // Set up the free cells (4 cells in top left of screen)
         this.freecellStacks = [];
@@ -351,6 +352,9 @@ class FreeCell {
         for (let i = 0; i < NumCards; i++) {
             this.startingCardOrder.push(i);
         }
+    }
+    requestRedraw() {
+        this.redrawRequested = true;
     }
     compare_stack(stack) {
         for (let i = 0; i < this.freecellStacks.length; i++) {
@@ -385,10 +389,22 @@ class FreeCell {
             callback(this.mainCardStacks[i], StackType.Regular, i);
         }
     }
-    // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L1267
-    // TODO: save_current_game
-    // TODO: read_current_game
-    // TODO: undo/redo
+    undo() {
+        console.log("undo; stack=%o", this.undoStack.length);
+        if (this.undoStack.length > 0) {
+            this.redoStack.push(this.exportGameState());
+            this.applyGameState(this.undoStack.pop(), false);
+            this.requestRedraw();
+        }
+    }
+    redo() {
+        console.log("redo; stack=%o", this.redoStack.length);
+        if (this.redoStack.length > 0) {
+            this.undoStack.push(this.exportGameState());
+            this.applyGameState(this.redoStack.pop(), false);
+            this.requestRedraw();
+        }
+    }
     // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L1539
     setupCards(newGame = true) {
         if (newGame) {
@@ -401,9 +417,7 @@ class FreeCell {
                 this.startingCardOrder[j] = temp;
             }
         }
-        this.acesStacks.forEach(x => x.clearStack());
-        this.freecellStacks.forEach(x => x.clearStack());
-        this.mainCardStacks.forEach(x => x.clearStack());
+        this.forEachStack(x => x.clearStack());
         // deal out cards to main stacks
         //console.log("starting card order: %o", this.startingCardOrder);
         for (let i = 0; i < this.startingCardOrder.length; i++) {
@@ -436,6 +450,7 @@ class FreeCell {
             const x = Math.round((i + NumFreeCells + 0.5) * cardHorizSpacing + (CardGraphicsHeight - CardGraphicsWidth) / 2);
             stack.setLeftTop(x, VertSeparatorWidth);
         });
+        this.requestRedraw();
     }
     // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L1676
     clearCardSelection() {
@@ -452,6 +467,7 @@ class FreeCell {
             this.selectedCardStack = cardStack;
             cardStack.getCard(-1).selected = true;
         }
+        this.requestRedraw();
     }
     // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L1705
     moveCard(srcStack, destStack) {
@@ -487,6 +503,7 @@ class FreeCell {
     // (I may end up refacotring this once I verify the TS port works.)
     button_press_event(x, y, overrideCardLogic = false) {
         const [destType, destStack] = this.xyToCardStackInfo(x, y);
+        const stateBeforeMoving = this.exportGameState();
         if (destType === StackType.Undefined || !destStack || destStack === this.selectedCardStack) {
             // Didn't click on a valid target, so clear the previous click selection and bail
             this.clearSelecions();
@@ -578,12 +595,48 @@ class FreeCell {
             }
             // Clear selection
             this.clearCardSelection();
-            if (!moved)
+            if (moved) {
+                this.redoStack = [];
+                this.undoStack.push(stateBeforeMoving);
+            }
+            else {
                 this.setCardSelection(destType, destStack, destStack.rect);
+            }
+            this.requestRedraw();
         }
     }
     draw(e) {
         this.forEachStack(stack => { stack.draw(e); });
+    }
+    exportGameState(includeStartingCards = true) {
+        const gameState = {};
+        this.forEachStack((stack, type, index) => {
+            const stackid = `s${type}${index}`;
+            gameState[stackid] = stack.cards.map(x => x.cardNum);
+        });
+        if (includeStartingCards) {
+            gameState.startingCards = this.startingCardOrder;
+        }
+        return JSON.stringify(gameState);
+    }
+    applyGameState(state, resetExistingGameState = false) {
+        this.clearSelecions();
+        const gameState = JSON.parse(state);
+        this.forEachStack((stack, type, index) => {
+            stack.clearStack();
+            const stackid = `s${type}${index}`;
+            if (gameState[stackid]) {
+                stack.cards = gameState[stackid].map(x => new Card(x));
+            }
+        });
+        if (gameState.startingCardOrder && resetExistingGameState) {
+            this.startingCardOrder = gameState.startingCardOrder;
+        }
+        if (resetExistingGameState) {
+            this.undoStack = [];
+            this.redoStack = [];
+        }
+        this.setCardRects();
     }
 }
 // Here is the wholly original code in order to
@@ -624,7 +677,25 @@ async function main() {
         freecell.button_press_event(x, y, e.shiftKey);
         draw();
     });
-    draw();
+    document.getElementById("saveState").onclick = function () {
+        console.log(freecell.exportGameState());
+    };
+    document.getElementById("loadState").onclick = function () {
+        const p = prompt("Game state?");
+        if (p)
+            freecell.applyGameState(p);
+        draw();
+    };
+    document.getElementById("undo").onclick = () => freecell.undo();
+    document.getElementById("redo").onclick = () => freecell.redo();
+    function animationFrame() {
+        if (freecell.redrawRequested) {
+            draw();
+            freecell.redrawRequested = false;
+        }
+        window.requestAnimationFrame(animationFrame);
+    }
+    animationFrame();
 }
 document.addEventListener("DOMContentLoaded", main);
 //# sourceMappingURL=freecell.js.map
