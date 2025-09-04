@@ -127,7 +127,12 @@ class Rect {
         // Determine if a point lies within the Rect
         return ((x >= this.left) && (x < this.left + this.width) && (y >= this.top) && (y < this.top + this.height));
     }
+
+    public clone(): Rect {
+        return new Rect(this.left, this.top, this.width, this.height);
+    }
 }
+
 
 // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L583
 
@@ -160,12 +165,17 @@ class Card {
     }
 
     public draw(e: DrawArgs) {
+        if (this.cardIsMoving) return;
+        this.drawAt(e, this.rect);
+    }
+
+    public drawAt(e: DrawArgs, rect: Rect) {
         const num = this.cardNum >= 0 ? this.cardNum : CardBacks.Blank;
         e.context.drawImage(
             e.cards, CardGraphicsWidth * num, this.selected ? CardGraphicsHeight : 0,
             CardGraphicsWidth, CardGraphicsHeight,
-            this.rect.left, this.rect.top,
-            this.rect.width, this.rect.height
+            rect.left, rect.top,
+            rect.width, rect.height
         );
     }
 
@@ -285,8 +295,8 @@ class CardStack {
     }
 
     public draw(e: DrawArgs) {
-        if (this.cards.length === 0){
-             let back: number = 0;
+        if (this.cards.length === 0) {
+            let back: number = 0;
 
             switch (this.stackSuit) {
                 case Suit.Clubs: back = CardBacks.Clubs; break;
@@ -302,16 +312,47 @@ class CardStack {
                 this.rect.left, this.rect.top,
                 this.rect.width, this.rect.height
             );
-        } else if (this.yOffset === 0){
+        } else if (this.yOffset === 0) {
             // optimize drawing by only drawing the top card when there is no spread
             // (i.e. in the foundations)
             this.getCard(-1)?.draw(e);
-        } else  {
+        } else {
             for (let card of this.cards) {
                 card.draw(e);
             }
         }
 
+    }
+}
+
+class MoveAnimation {
+    public speed : number = 550;
+
+    public constructor(
+        public card: Card,
+        public animationPosition: Rect
+    ) { }
+
+    public process(delta: number): boolean {
+        // returns true if the animation is still ongoing, false if its completed
+
+        const frameDistance = delta * this.speed;
+        
+        const deltaX = this.card.rect.left - this.animationPosition.left;
+        const deltaY = this.card.rect.top - this.animationPosition.top;
+        
+        const totalDistance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        
+        if (totalDistance > frameDistance){
+            // move only a portion of the deistance
+            const angleOfMovement = Math.atan2(deltaY, deltaX);
+            this.animationPosition.left += Math.cos(angleOfMovement) * frameDistance;
+            this.animationPosition.top += Math.sin(angleOfMovement) * frameDistance;
+            return true;
+        } else {
+            // stopping the animation will just revewal the card's intended destination
+            return false;
+        }
     }
 }
 
@@ -337,6 +378,7 @@ class FreeCell {
     public startingCardOrder: number[] = [];
 
     public redrawRequested: boolean = false;
+    public moveAnimations: MoveAnimation[] = [];
 
     public constructor() {
         // Set up the free cells (4 cells in top left of screen)
@@ -365,6 +407,21 @@ class FreeCell {
 
     public requestRedraw() {
         this.redrawRequested = true;
+    }
+
+    public processAnimations(delta: number): boolean {
+        // return false if there are no animations to process, true if an animation is being processed
+        if (this.moveAnimations.length >= 1) {
+            if (!this.moveAnimations[0].process(delta)){
+                this.moveAnimations[0].card.cardIsMoving = false;
+                this.moveAnimations.shift();
+            } else {
+                this.moveAnimations[0].card.cardIsMoving = true;
+            }
+            return true;
+        } else {
+            return false;
+        }
     }
 
     public forEachStack(callback: (stack: CardStack, stackType: StackType, index: number) => any) {
@@ -484,9 +541,13 @@ class FreeCell {
     public moveCard(srcStack: CardStack, destStack: CardStack) {
         if (srcStack === destStack) return;
 
-        // TODO: animation
         const card = srcStack.popCard();
-        if (card) destStack.pushCard(card);
+        if (card) {
+            this.moveAnimations.push(new MoveAnimation(card, card.rect.clone()));
+            card.cardIsMoving = true;
+            card.selected = false;
+            destStack.pushCard(card);
+        }
     }
 
     // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L1812
@@ -518,6 +579,9 @@ class FreeCell {
     // This is the "bug, ugly one" -- all the gameplay rules are implemented here...
     // (I may end up refacotring this once I verify the TS port works.)
     public button_press_event(x: number, y: number, overrideCardLogic: boolean = false) {
+        // Disallow doing anything during a move animation
+        if (this.moveAnimations.length > 0) return;
+
         const [destType, destStack] = this.xyToCardStackInfo(x, y);
         const stateBeforeMoving = this.exportGameState();
 
@@ -623,6 +687,10 @@ class FreeCell {
 
     public draw(e: DrawArgs) {
         this.forEachStack(stack => { stack.draw(e) });
+
+        for (let i = this.moveAnimations.length - 1; i >= 0; i--){
+            this.moveAnimations[i].card.drawAt(e, this.moveAnimations[i].animationPosition);
+        }
     }
 
     public exportGameState(includeStartingCards: boolean = true): string {
@@ -723,15 +791,20 @@ async function main() {
     document.getElementById("undo")!.onclick = () => freecell.undo();
     document.getElementById("redo")!.onclick = () => freecell.redo();
 
-    function animationFrame(){
-        if (freecell.redrawRequested){
+    let lastFrameTime : number = 0;
+
+    function animationFrame(time : number) {
+        let delta = (time - lastFrameTime) / 1000;
+        lastFrameTime = time;
+
+        if (freecell.processAnimations(delta) || freecell.redrawRequested) {
             draw();
             freecell.redrawRequested = false;
         }
         window.requestAnimationFrame(animationFrame);
     }
 
-    animationFrame();
+    animationFrame(1);
 }
 
 document.addEventListener("DOMContentLoaded", main);
