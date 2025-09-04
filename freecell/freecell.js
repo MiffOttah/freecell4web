@@ -462,7 +462,7 @@ class FreeCell {
             let topCardOfRun = this.selectedCardStack.getCard(-1);
             while (true) {
                 let aboveCard = this.selectedCardStack.getCard(-1 - runLength);
-                if (aboveCard && aboveCard.willAcceptCard(topCardOfRun)) {
+                if (aboveCard && aboveCard.willAcceptCard(topCardOfRun) && runLength < numFreeCells) {
                     topCardOfRun = aboveCard;
                     runLength++;
                 }
@@ -474,7 +474,6 @@ class FreeCell {
                 runLength = numFreeCells + 1;
             const this2 = this;
             function columnMove(count) {
-                console.log("moving a column of %d card(s)", count);
                 const tempStacks = [];
                 for (let i = 0; i < count - 1; i++) {
                     for (let j = 0; j < NumFreeCells; j++) {
@@ -485,7 +484,6 @@ class FreeCell {
                         }
                     }
                 }
-                console.log("used %o tempstacks to move %o card(s)", tempStacks.length, count);
                 this2.moveCard(this2.selectedCardStack, destStack);
                 for (let s of tempStacks)
                     this2.moveCard(this2.freecellStacks[s], destStack);
@@ -511,7 +509,7 @@ class FreeCell {
             }
             else if (destNumCards <= 0 && runLength > 1) {
                 // Move multiple cards to an empty stack
-                columnMove(Math.min(numFreeCells, runLength) + 1);
+                columnMove(runLength);
                 moved = true;
             }
             else {
