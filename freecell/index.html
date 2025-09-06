@@ -9,11 +9,14 @@
 <body>
   <main>
     <canvas id="gameCanvas" width="740" height="500"></canvas>
-    <p>
+    <p id="toolbar">
+      <button type="button" id="undo" title="Undo" aria-label="Undo"></button>
+      <button type="button" id="redo" title="Redo" aria-label="Redo"></button>
+      <button type="button" id="reset" title="Reset" aria-label="Reset"></button>
+      <button type="button" id="new" title="New" aria-label="New"></button>
       <button type="button" id="saveState">Save game</button>
       <button type="button" id="loadState">Load game</button>
-      <button type="button" id="undo">Undo</button>
-      <button type="button" id="redo">Redo</button>
+      <button type="button" id="about" title="About" aria-label="about"></button>
     </p>
   </main>
   <script src="freecell.js"></script>
