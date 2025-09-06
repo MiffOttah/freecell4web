@@ -295,7 +295,7 @@ class CardStack {
     }
 
     public draw(e: DrawArgs) {
-        if (this.cards.length === 0) {
+        if (this.cards.length === 0 || (this.cards.length === 1 && this.cards[0].cardIsMoving)) {
             let back: number = 0;
 
             switch (this.stackSuit) {
@@ -326,28 +326,29 @@ class CardStack {
 }
 
 class MoveAnimation {
-    public speed : number = 550;
+    public speed: number = 700;
 
     public constructor(
         public card: Card,
-        public animationPosition: Rect
+        public currentPosition: Rect,
+        public endPosition: Rect
     ) { }
 
     public process(delta: number): boolean {
         // returns true if the animation is still ongoing, false if its completed
 
         const frameDistance = delta * this.speed;
-        
-        const deltaX = this.card.rect.left - this.animationPosition.left;
-        const deltaY = this.card.rect.top - this.animationPosition.top;
-        
+
+        const deltaX = this.endPosition.left - this.currentPosition.left;
+        const deltaY = this.endPosition.top - this.currentPosition.top;
+
         const totalDistance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-        
-        if (totalDistance > frameDistance){
+
+        if (totalDistance > frameDistance) {
             // move only a portion of the deistance
             const angleOfMovement = Math.atan2(deltaY, deltaX);
-            this.animationPosition.left += Math.cos(angleOfMovement) * frameDistance;
-            this.animationPosition.top += Math.sin(angleOfMovement) * frameDistance;
+            this.currentPosition.left += Math.cos(angleOfMovement) * frameDistance;
+            this.currentPosition.top += Math.sin(angleOfMovement) * frameDistance;
             return true;
         } else {
             // stopping the animation will just revewal the card's intended destination
@@ -378,7 +379,10 @@ class FreeCell {
     public startingCardOrder: number[] = [];
 
     public redrawRequested: boolean = false;
-    public moveAnimations: MoveAnimation[] = [];
+    //public moveAnimations: MoveAnimation[] = [];
+
+    public currentAnimation: MoveAnimation | null;
+    public moveQueue: [CardStack, CardStack][] = [];
 
     public constructor() {
         // Set up the free cells (4 cells in top left of screen)
@@ -411,12 +415,13 @@ class FreeCell {
 
     public processAnimations(delta: number): boolean {
         // return false if there are no animations to process, true if an animation is being processed
-        if (this.moveAnimations.length >= 1) {
-            if (!this.moveAnimations[0].process(delta)){
-                this.moveAnimations[0].card.cardIsMoving = false;
-                this.moveAnimations.shift();
+        if (this.currentAnimation) {
+            if (!this.currentAnimation.process(delta)) {
+                this.currentAnimation.card.cardIsMoving = false;
+                this.currentAnimation = null;
+                this.dequeueMove();
             } else {
-                this.moveAnimations[0].card.cardIsMoving = true;
+                this.currentAnimation.card.cardIsMoving = true;
             }
             return true;
         } else {
@@ -479,15 +484,6 @@ class FreeCell {
         this.setCardRects();
     }
 
-    //  Get a rect that encloses all the cards in the given list of CardStacks
-    // public getStackListEnclosingRect(cardStackList: CardStack[]): Rect {
-    //     let rect = cardStackList[0].rect.clone();
-    //     for (let i = 0; i < cardStackList.length; i++) {
-    //         rect.unionWith(cardStackList[i].rect);
-    //     }
-    //     return rect;
-    // }
-
     // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L1572
 
     // Set the position of all card stacks; this is done in response to a configure event
@@ -543,10 +539,27 @@ class FreeCell {
 
         const card = srcStack.popCard();
         if (card) {
-            this.moveAnimations.push(new MoveAnimation(card, card.rect.clone()));
+            const currentPosition = card.rect.clone();
             card.cardIsMoving = true;
             card.selected = false;
             destStack.pushCard(card);
+
+            this.currentAnimation = new MoveAnimation(card, currentPosition, card.rect.clone());
+        }
+    }
+
+    public queueMove(srcStack: CardStack, destStack: CardStack) {
+        if (srcStack === destStack) return;
+        this.moveQueue.push([srcStack, destStack]);
+    }
+
+    public dequeueMove(): boolean {
+        const m = this.moveQueue.shift();
+        if (m) {
+            this.moveCard(m[0], m[1]);
+            return true;
+        } else {
+            return false;
         }
     }
 
@@ -580,7 +593,7 @@ class FreeCell {
     // (I may end up refacotring this once I verify the TS port works.)
     public button_press_event(x: number, y: number, overrideCardLogic: boolean = false) {
         // Disallow doing anything during a move animation
-        if (this.moveAnimations.length > 0) return;
+        if (this.currentAnimation) return;
 
         const [destType, destStack] = this.xyToCardStackInfo(x, y);
         const stateBeforeMoving = this.exportGameState();
@@ -610,7 +623,7 @@ class FreeCell {
             let topCardOfRun = this.selectedCardStack.getCard(-1);
             while (true) {
                 let aboveCard = this.selectedCardStack.getCard(-1 - runLength);
-                if (aboveCard && aboveCard.willAcceptCard(topCardOfRun) && runLength < numFreeCells) {
+                if (aboveCard && aboveCard.willAcceptCard(topCardOfRun) && runLength <= numFreeCells) {
                     topCardOfRun = aboveCard;
                     runLength++;
                 } else {
@@ -618,23 +631,23 @@ class FreeCell {
                 }
             }
             if (runLength > numFreeCells + 1) runLength = numFreeCells + 1;
+            if (this.selectedCardStack.type !== StackType.Regular) runLength = 1; // don't allow moving more than one card out of the foundation at a time
 
             const this2 = this;
             function columnMove(count: number) {
                 const tempStacks: number[] = [];
 
-                for (let i = 0; i < count - 1; i++) {
-                    for (let j = 0; j < NumFreeCells; j++) {
-                        if (this2.freecellStacks[j].getNumCards() <= 0) {
-                            this2.moveCard(this2.selectedCardStack!, this2.freecellStacks[j]);
-                            tempStacks.unshift(j);
-                            break;
-                        }
+                for (let i = 1, j = 0; i < count && j < NumFreeCells; j++) {
+                    if (this2.freecellStacks[j].getNumCards() <= 0) {
+                        this2.queueMove(this2.selectedCardStack!, this2.freecellStacks[j]);
+                        tempStacks.unshift(j);
+                        i++;
                     }
                 }
 
-                this2.moveCard(this2.selectedCardStack!, destStack!);
-                for (let s of tempStacks) this2.moveCard(this2.freecellStacks[s], destStack!);
+                this2.queueMove(this2.selectedCardStack!, destStack!);
+                for (let s of tempStacks) this2.queueMove(this2.freecellStacks[s], destStack!);
+                this2.dequeueMove();
             }
 
             if (destType === StackType.Freecell) {
@@ -662,7 +675,9 @@ class FreeCell {
                 let destCard = destStack.getCard(-1)!;
                 while (runLength > 0 && !moved) {
                     let testCard = this.selectedCardStack.getCard(-runLength);
-                    if (destCard.willAcceptCard(testCard) || (runLength === 1 && overrideCardLogic)) {
+                    let destWillAccept = destCard.willAcceptCard(testCard);
+
+                    if (destWillAccept || (runLength === 1 && overrideCardLogic)) {
                         columnMove(runLength);
                         moved = true;
                     } else {
@@ -688,8 +703,8 @@ class FreeCell {
     public draw(e: DrawArgs) {
         this.forEachStack(stack => { stack.draw(e) });
 
-        for (let i = this.moveAnimations.length - 1; i >= 0; i--){
-            this.moveAnimations[i].card.drawAt(e, this.moveAnimations[i].animationPosition);
+        if (this.currentAnimation) {
+            this.currentAnimation.card.drawAt(e, this.currentAnimation.currentPosition);
         }
     }
 
@@ -791,9 +806,9 @@ async function main() {
     document.getElementById("undo")!.onclick = () => freecell.undo();
     document.getElementById("redo")!.onclick = () => freecell.redo();
 
-    let lastFrameTime : number = 0;
+    let lastFrameTime: number = 0;
 
-    function animationFrame(time : number) {
+    function animationFrame(time: number) {
         let delta = (time - lastFrameTime) / 1000;
         lastFrameTime = time;
 
