@@ -2,7 +2,7 @@
 start konsole -e "php -S 127.0.0.1:8000"
 xdg-open http://localhost:8000/freecell/index.html
 tsc --watch freecell/freecell.ts \
-    --lib es2015,dom \
+    --lib es2015,dom,dom.iterable \
     --target es2024 \
     --sourceMap
 

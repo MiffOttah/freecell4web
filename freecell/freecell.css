@@ -67,3 +67,50 @@ main {
   background-image: url("data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz48c3ZnIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSJub25lIiBzdHJva2U9ImJsYWNrIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTEyIDEybS05IDBhOSA5IDAgMSAwIDE4IDBhOSA5IDAgMSAwIC0xOCAwIiAvPjxwYXRoIGQ9Ik0xMiAxN2wwIC4wMSIgLz48cGF0aCBkPSJNMTIgMTMuNWExLjUgMS41IDAgMCAxIDEgLTEuNWEyLjYgMi42IDAgMSAwIC0zIC00IiAvPjwvc3ZnPg==");
   margin: auto 0 0 0;
 }
+#about-dialog {
+  background: white;
+  color: black;
+  max-width: 50rem;
+  min-height: 20rem;
+  margin: auto;
+  padding: 1rem;
+  border: 1px solid black;
+  border-radius: 0.5rem;
+}
+#about-dialog p {
+  margin-bottom: 1em;
+}
+#about-dialog h1 {
+  font-size: 120%;
+  margin-bottom: 1rem;
+}
+#about-dialog a {
+  color: blue;
+  text-decoration: underline;
+}
+#about-dialog form {
+  text-align: center;
+}
+#about-dialog button {
+  width: 5rem;
+  height: 2.5rem;
+  background-color: #eee;
+  border: 1px solid black;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+#license {
+  font-size: 90%;
+  margin: 0 1rem;
+}
+button:hover {
+  background-color: #ccf !important;
+}
+.tooltip {
+  color: white;
+  font-size: 1.5rem;
+  position: absolute;
+  left: unset;
+  right: 5rem;
+  padding-top: 1rem;
+}

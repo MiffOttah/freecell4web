@@ -667,9 +667,9 @@ function loadImage(src) {
     });
 }
 async function main() {
+    // Game logic and display
     const gameCanvas = document.getElementById("gameCanvas");
     const cards = await loadImage("cards.png");
-    // init the freecell game
     const freecell = new FreeCell();
     freecell.setupCards(true);
     function draw() {
@@ -680,23 +680,6 @@ async function main() {
         const e = new DrawArgs(ctx, cards);
         freecell.draw(e);
     }
-    gameCanvas.addEventListener("click", function (e) {
-        const x = e.offsetX;
-        const y = e.offsetY;
-        freecell.button_press_event(x, y, e.shiftKey);
-        draw();
-    });
-    document.getElementById("saveState").onclick = function () {
-        console.log(freecell.exportGameState());
-    };
-    document.getElementById("loadState").onclick = function () {
-        const p = prompt("Game state?");
-        if (p)
-            freecell.applyGameState(p);
-        draw();
-    };
-    document.getElementById("undo").onclick = () => freecell.undo();
-    document.getElementById("redo").onclick = () => freecell.redo();
     let lastFrameTime = 0;
     function animationFrame(time) {
         let delta = (time - lastFrameTime) / 1000;
@@ -707,6 +690,39 @@ async function main() {
         }
         window.requestAnimationFrame(animationFrame);
     }
+    gameCanvas.addEventListener("click", function (e) {
+        const x = e.offsetX;
+        const y = e.offsetY;
+        freecell.button_press_event(x, y, e.shiftKey);
+        draw();
+    });
+    // User interface
+    document.getElementById("undo").onclick = () => freecell.undo();
+    document.getElementById("redo").onclick = () => freecell.redo();
+    document.getElementById("reset").onclick = () => freecell.setupCards(false);
+    document.getElementById("new").onclick = () => freecell.setupCards(true);
+    document.getElementById("about").onclick = () => document.getElementById("about-dialog")?.showModal();
+    for (let button of document.querySelectorAll("#toolbar button")) {
+        let label = document.createElement("div");
+        label.popover = "auto";
+        label.setAttribute("for", button.id);
+        label.classList.add("tooltip");
+        label.id = button.id + "-tooltip";
+        label.textContent = button.getAttribute("title");
+        document.body.appendChild(label);
+        button.addEventListener("mouseleave", function () {
+            document.getElementById(this.id + "-tooltip")?.hidePopover();
+        });
+        button.addEventListener("mouseover", function () {
+            const label = document.getElementById(this.id + "-tooltip");
+            if (label) {
+                console.log(this.offsetTop);
+                label.style.top = this.offsetTop + "px";
+                label.showPopover();
+            }
+        });
+    }
+    // Start the game
     animationFrame(1);
 }
 document.addEventListener("DOMContentLoaded", main);

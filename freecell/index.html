@@ -1,11 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
-  <title>freecell4web</title>
+  <title>Freecell4web</title>
   <link rel="stylesheet" href="freecell.css">
+  <link rel="icon" type="image/png" href="icons/favicon-96x96.png" sizes="96x96">
+  <link rel="icon" type="image/svg+xml" href="icons/favicon.svg">
+  <link rel="shortcut icon" href="icons/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-title" content="Freecell4">
+  <link rel="manifest" href="freecell.webmanifest">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
+
 <body>
   <main>
     <canvas id="gameCanvas" width="740" height="500"></canvas>
@@ -14,11 +22,34 @@
       <button type="button" id="redo" title="Redo" aria-label="Redo"></button>
       <button type="button" id="reset" title="Reset" aria-label="Reset"></button>
       <button type="button" id="new" title="New" aria-label="New"></button>
-      <button type="button" id="saveState">Save game</button>
-      <button type="button" id="loadState">Load game</button>
       <button type="button" id="about" title="About" aria-label="about"></button>
     </p>
   </main>
+  <dialog id="about-dialog" closedby="any">
+    <h1>Freecell4web</h1>
+    <p>Made by <a href="https://miffthefox.info/">Miff</a>.</p>
+    <p>Based on <a href="https://github.com/lufebe16/freecell4maemo/">freecell4maemo</a> by Roy Wood and Justin Quek
+      and its Android port by Lukas Beck.</a></p>
+    <div id="license">
+      <p>This program is free software: you can redistribute it and/or modify
+        it under the terms of the GNU General Public License as published by
+        the Free Software Foundation, either version 3 of the License, or
+        (at your option) any later version.</p>
+      <p>This program is distributed in the hope that it will be useful,
+        but WITHOUT ANY WARRANTY; without even the implied warranty of
+        MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+        GNU General Public License for more details.</p>
+      <p>You should have received a copy of the GNU General Public License
+        along with this program. If not, see &lt;<a
+          href="https://www.gnu.org/licenses/">https://www.gnu.org/licenses/</a>&gt;.</p>
+    </div>
+    <p>
+      <a href="https://github.com/MiffOttah/freecell4web">Github</a>
+      <a href="https://github.com/MiffOttah/freecell4web/blob/main/LICENSE.md">License</a>
+    </p>
+    <form method="dialog"><button>OK</button></form>
+  </dialog>
   <script src="freecell.js"></script>
 </body>
+
 </html>
