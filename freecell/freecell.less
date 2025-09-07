@@ -74,7 +74,7 @@ main {
 
 #about {
   background-image: url("data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz48c3ZnIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSJub25lIiBzdHJva2U9ImJsYWNrIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTEyIDEybS05IDBhOSA5IDAgMSAwIDE4IDBhOSA5IDAgMSAwIC0xOCAwIiAvPjxwYXRoIGQ9Ik0xMiAxN2wwIC4wMSIgLz48cGF0aCBkPSJNMTIgMTMuNWExLjUgMS41IDAgMCAxIDEgLTEuNWEyLjYgMi42IDAgMSAwIC0zIC00IiAvPjwvc3ZnPg==");
-  margin: auto 0 0 0;
+  margin: auto 0 0 0 !important;
 }
 
 #about-dialog {
@@ -131,4 +131,33 @@ button:hover {
   left: unset;
   right: 5rem;
   padding-top: 1rem;
+}
+
+
+@media (orientation: portrait) {
+  main {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+  }
+
+  #toolbar {
+    flex-direction: row-reverse;
+
+    button {
+      margin-bottom: 0;
+      margin-left: 1.5rem;
+    }
+  }
+
+  #about {
+    margin: 0 auto 0 0 !important;
+  }
+
+  label {
+    display: none;
+  }
+
+  .tooltip {
+    display: none;
+  }
 }

@@ -669,6 +669,7 @@ function loadImage(src) {
 async function main() {
     // Game logic and display
     const gameCanvas = document.getElementById("gameCanvas");
+    const canvasContainer = document.getElementById("canvasContainer");
     const cards = await loadImage("cards.png");
     const freecell = new FreeCell();
     freecell.setupCards(true);
@@ -681,9 +682,20 @@ async function main() {
         freecell.draw(e);
     }
     let lastFrameTime = 0;
+    let lastPageSize = { width: -1, height: -1 };
     function animationFrame(time) {
         let delta = (time - lastFrameTime) / 1000;
         lastFrameTime = time;
+        if (canvasContainer.offsetWidth !== lastPageSize.width || canvasContainer.offsetHeight !== lastPageSize.height) {
+            lastPageSize.width = canvasContainer.offsetWidth;
+            lastPageSize.height = canvasContainer.offsetHeight;
+            //console.log("resolution change to %ox%o", canvasContainer.offsetWidth, canvasContainer.offsetHeight);
+            gameCanvas.width = lastPageSize.width - 32;
+            gameCanvas.height = lastPageSize.height - 32;
+            freecell.screenWidth = lastPageSize.width - 32;
+            freecell.setCardRects();
+            freecell.requestRedraw();
+        }
         if (freecell.processAnimations(delta) || freecell.redrawRequested) {
             draw();
             freecell.redrawRequested = false;

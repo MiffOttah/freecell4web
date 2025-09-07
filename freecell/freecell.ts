@@ -771,6 +771,7 @@ async function main() {
     // Game logic and display
 
     const gameCanvas: any = document.getElementById("gameCanvas")!;
+    const canvasContainer: any = document.getElementById("canvasContainer")!;
     const cards = await loadImage("cards.png");
 
     const freecell = new FreeCell();
@@ -788,10 +789,24 @@ async function main() {
     }
 
     let lastFrameTime: number = 0;
+    let lastPageSize = { width: -1, height: -1 };
 
     function animationFrame(time: number) {
         let delta = (time - lastFrameTime) / 1000;
         lastFrameTime = time;
+
+        if (canvasContainer.offsetWidth !== lastPageSize.width || canvasContainer.offsetHeight !== lastPageSize.height) {
+            lastPageSize.width = canvasContainer.offsetWidth;
+            lastPageSize.height = canvasContainer.offsetHeight;
+            //console.log("resolution change to %ox%o", canvasContainer.offsetWidth, canvasContainer.offsetHeight);
+
+            gameCanvas.width = lastPageSize.width - 32;
+            gameCanvas.height = lastPageSize.height - 32;
+
+            freecell.screenWidth = lastPageSize.width - 32;
+            freecell.setCardRects();
+            freecell.requestRedraw();
+        }
 
         if (freecell.processAnimations(delta) || freecell.redrawRequested) {
             draw();
@@ -824,13 +839,13 @@ async function main() {
         label.textContent = button.getAttribute("title");
         document.body.appendChild(label);
 
-        button.addEventListener("mouseleave", function(){
+        button.addEventListener("mouseleave", function () {
             document.getElementById(this.id + "-tooltip")?.hidePopover();
         });
 
-        button.addEventListener("mouseover", function(){
+        button.addEventListener("mouseover", function () {
             const label = document.getElementById(this.id + "-tooltip");
-            if (label){
+            if (label) {
                 console.log(this.offsetTop);
                 label.style.top = this.offsetTop + "px";
                 label.showPopover();
