@@ -250,7 +250,13 @@ class CardStack {
         else if (this.yOffset === 0) {
             // optimize drawing by only drawing the top card when there is no spread
             // (i.e. in the foundations)
-            this.getCard(-1)?.draw(e);
+            const topCard = this.getCard(-1);
+            if (topCard && topCard.cardIsMoving) {
+                this.getCard(-2)?.draw(e);
+            }
+            else {
+                topCard?.draw(e);
+            }
         }
         else {
             for (let card of this.cards) {
