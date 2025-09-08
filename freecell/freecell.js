@@ -309,6 +309,7 @@ class FreeCell {
     currentAnimation;
     moveQueue = [];
     animateFast = false;
+    autoMovingAll = false;
     constructor() {
         // Set up the free cells (4 cells in top left of screen)
         this.freecellStacks = [];
@@ -339,7 +340,12 @@ class FreeCell {
             if (!this.currentAnimation.process(delta)) {
                 this.currentAnimation.card.cardIsMoving = false;
                 this.currentAnimation = null;
-                this.dequeueMove();
+                if (this.autoMovingAll) {
+                    this.automaticCardMoveAll();
+                }
+                else {
+                    this.dequeueMove();
+                }
             }
             else {
                 this.currentAnimation.card.cardIsMoving = true;
@@ -446,10 +452,12 @@ class FreeCell {
             this.currentAnimation = new MoveAnimation(card, currentPosition, card.rect.clone(), this.screenWidth * (this.animateFast ? 2 : 1.5));
         }
     }
-    queueMove(srcStack, destStack) {
+    queueMove(srcStack, destStack, immediate = false) {
         if (srcStack === destStack)
             return;
         this.moveQueue.push([srcStack, destStack]);
+        if (immediate)
+            this.dequeueMove();
     }
     dequeueMove() {
         const m = this.moveQueue.shift();
@@ -484,15 +492,26 @@ class FreeCell {
     // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L1867
     // This is the "bug, ugly one" -- all the gameplay rules are implemented here...
     // (I may end up refacotring this once I verify the TS port works.)
-    button_press_event(x, y, overrideCardLogic = false) {
+    button_press_event(x, y, overrideCardLogic = false, rightClick = false) {
         // Disallow doing anything during a move animation
         if (this.currentAnimation)
             return;
         const [destType, destStack] = this.xyToCardStackInfo(x, y);
         const stateBeforeMoving = this.exportGameState();
         if (destType === StackType.Undefined || !destStack || destStack === this.selectedCardStack) {
-            // Didn't click on a valid target, so clear the previous click selection and bail
+            // Didn't click on a valid target, so clear the previous click selection
             this.clearSelecions();
+            // right clicking on empty space will automatically move as many cards as possible to the foundations
+            if (rightClick) {
+                this.automaticCardMoveAll();
+            }
+        }
+        else if (rightClick) {
+            // Automatically move the card from the clicked card
+            this.animateFast = false;
+            this.clearSelecions();
+            this.automaticCardMove(destStack, destStack.type !== StackType.Freecell);
+            this.requestRedraw();
         }
         else if (!this.selectedCardStack) {
             // There was no previous selection, so try
@@ -592,6 +611,49 @@ class FreeCell {
             this.requestRedraw();
         }
     }
+    automaticCardMoveAll() {
+        this.animateFast = true;
+        for (let stack of this.mainCardStacks) {
+            if (this.automaticCardMove(stack, false)) {
+                this.autoMovingAll = true;
+                return true;
+            }
+        }
+        for (let stack of this.freecellStacks) {
+            if (this.automaticCardMove(stack, false)) {
+                this.autoMovingAll = true;
+                return true;
+            }
+        }
+        this.autoMovingAll = false;
+        return false;
+    }
+    automaticCardMove(srcStack, allowMoveToFreecells = true) {
+        // Don't move anything off the foundations
+        if (srcStack.type === StackType.Ace)
+            return false;
+        const [srcValue, srcSuit] = srcStack.getCardValueSuit(-1);
+        if (srcValue >= 0) {
+            for (var foundation of this.acesStacks) {
+                if (foundation.stackSuit === srcSuit &&
+                    ((foundation.getNumCards() === 0 && srcValue === 0) || // are we moving an ace onto an empty foundation?
+                        (foundation.getCard(-1)?.getValue() === srcValue - 1) // are we moving the next card onto the foundation?
+                    )) {
+                    this.queueMove(srcStack, foundation, true);
+                    return true;
+                }
+            }
+            if (allowMoveToFreecells) {
+                for (var freecell of this.freecellStacks) {
+                    if (freecell.getNumCards() === 0) {
+                        this.queueMove(srcStack, freecell, true);
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
     draw(e) {
         this.forEachStack(stack => { stack.draw(e); });
         if (this.currentAnimation) {
@@ -682,11 +744,17 @@ async function main() {
         }
         window.requestAnimationFrame(animationFrame);
     }
-    gameCanvas.addEventListener("click", function (e) {
+    gameCanvas.addEventListener("mouseup", function (e) {
         const x = e.offsetX;
         const y = e.offsetY;
-        freecell.button_press_event(x, y, e.shiftKey);
+        freecell.button_press_event(x, y, e.shiftKey, e.button === 2);
         draw();
+        e.preventDefault();
+        return false;
+    });
+    gameCanvas.addEventListener("contextmenu", function (e) {
+        e.preventDefault();
+        return false;
     });
     // User interface
     document.getElementById("undo").onclick = () => freecell.undo();
