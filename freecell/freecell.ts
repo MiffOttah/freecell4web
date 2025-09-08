@@ -33,9 +33,6 @@ enum Suit {
     Undefined = -1
 }
 
-const SuitSym = ["C", "D", "S", "H"];
-const CardSym = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K"];
-
 // Suit colors
 enum SuitColor {
     Black = 0,
@@ -61,9 +58,6 @@ const CardBacks = {
     Fancy: 57
 };
 
-// Total number of card images
-const TotalNumCards = CardBacks.Fancy + 1;
-
 // Total number of card columns
 const NumColumns = 8;
 
@@ -85,27 +79,6 @@ enum StackType {
 const CardGraphicsWidth = 73;
 const CardGraphicsHeight = 97;
 
-function suit_to_color(suit: Suit): SuitColor {
-    switch (suit) {
-        case Suit.Clubs:
-        case Suit.Spades:
-            return SuitColor.Black;
-        case Suit.Diamonds:
-        case Suit.Hearts:
-            return SuitColor.Red;
-        default:
-            return SuitColor.Undefined;
-    }
-}
-
-function colorFlip(color: SuitColor): SuitColor {
-    switch (color) {
-        case SuitColor.Black: return SuitColor.Red;
-        case SuitColor.Red: return SuitColor.Black;
-        default: return SuitColor.Undefined;
-    }
-}
-
 // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L525
 
 class Rect {
@@ -115,13 +88,6 @@ class Rect {
         public width: number,
         public height: number
     ) { }
-
-    public setRect(left: number, top: number, width: number, height: number) {
-        this.left = left;
-        this.top = top;
-        this.width = width;
-        this.height = height;
-    }
 
     public enclosesXY(x: number, y: number) {
         // Determine if a point lies within the Rect
@@ -153,7 +119,16 @@ class Card {
     }
 
     public getSuitColor() {
-        return suit_to_color(this.getSuit());
+        switch (this.getSuit()) {
+            case Suit.Clubs:
+            case Suit.Spades:
+                return SuitColor.Black;
+            case Suit.Diamonds:
+            case Suit.Hearts:
+                return SuitColor.Red;
+            default:
+                return SuitColor.Undefined;
+        }
     }
 
     public getValue() {
@@ -180,7 +155,7 @@ class Card {
     }
 
     public toString(): string {
-        return "A23456789TJQK"[this.getValue()] + "CDSH"[this.getSuit()];
+        return "A23456789TJQK"[this.getValue()] + "♣♦♠♥"[this.getSuit()];
     }
 
     // If this card will "accept" a card after it (i.e., if this card is the opposite color too and one rank above nextCard)
@@ -210,7 +185,6 @@ class CardStack {
         public stackSuit: Suit,
         public type: StackType
     ) {
-        //this.rect = new Rect(left, top, CardGraphicsWidth, CardGraphicsHeight);
         this._reposition();
     }
 
@@ -252,9 +226,6 @@ class CardStack {
     public getCard(cardIndex: number): Card | null {
         // Gets the card in a specific position on the card stack
         // negative numbers count from the end (ala Python)
-
-        // console.log("getCard(%o) of %s", cardIndex, this.cards.map(x => x.toString()).join(','));
-
         if (cardIndex < 0) cardIndex = this.cards.length + cardIndex;
         return (cardIndex < 0 || cardIndex >= this.cards.length) ? null : this.cards[cardIndex];
     }
@@ -262,19 +233,13 @@ class CardStack {
     // Get the card value, suit, and colour of a card on the CardStack
     // negative cardIndex values work like in python (e.g. -1 is last/top card);
     // if a bad index value is supplied, return the stack suit (i.e. ace stack suit)
-    public getCardValueSuitColor(cardIndex: number): [number, Suit, SuitColor] {
+    public getCardValueSuit(cardIndex: number): [number, Suit] {
         let card = this.getCard(cardIndex);
         if (card) {
-            return [card.getValue(), card.getSuit(), card.getSuitColor()];
+            return [card.getValue(), card.getSuit()];
         } else {
-            return [-1, this.stackSuit, suit_to_color(this.stackSuit)];
+            return [-1, this.stackSuit];
         }
-    }
-
-    public getTopCardRect(): Rect {
-        // Gets the rect of the top card on the card stack; return bare rect if there are no cards
-        const topCard = this.getCard(-1);
-        return topCard ? topCard.rect : this.rect;
     }
 
     public popCard(): Card | null {
@@ -330,8 +295,6 @@ class CardStack {
 }
 
 class MoveAnimation {
-    //public speed: number = 700;
-
     public constructor(
         public card: Card,
         public currentPosition: Rect,
@@ -388,6 +351,7 @@ class FreeCell {
 
     public currentAnimation: MoveAnimation | null;
     public moveQueue: [CardStack, CardStack][] = [];
+    public animateFast: boolean = false;
 
     public constructor() {
         // Set up the free cells (4 cells in top left of screen)
@@ -447,7 +411,6 @@ class FreeCell {
     }
 
     public undo() {
-        console.log("undo; stack=%o", this.undoStack.length);
         if (this.undoStack.length > 0) {
             this.redoStack.push(this.exportGameState());
             this.applyGameState(this.undoStack.pop() as string, false);
@@ -456,7 +419,6 @@ class FreeCell {
     }
 
     public redo() {
-        console.log("redo; stack=%o", this.redoStack.length);
         if (this.redoStack.length > 0) {
             this.undoStack.push(this.exportGameState());
             this.applyGameState(this.redoStack.pop() as string, false);
@@ -486,20 +448,20 @@ class FreeCell {
             this.mainCardStacks[i % NumColumns].pushCard(new Card(this.startingCardOrder[i], new Rect(0, 0, 0, 0)));
         }
 
-        this.setCardRects();
+        this.reposition();
     }
 
     // https://github.com/lufebe16/freecell4maemo/blob/4545ca58af1e350d1ead19d4369d840d8c59d199/src/freecell.py#L1572
 
     // Set the position of all card stacks; this is done in response to a configure event
-    public setCardRects() {
+    public reposition() {
         let cardHorizSpacing = this.screenWidth / 8;
-        
+
         const cardWidth = this.screenWidth / 10;
         const cardHeight = cardWidth / 73 * 97;
 
         let vertSeparatorWidth = VertSeparatorWidth * cardWidth / CardGraphicsWidth;
-        
+
         this.mainCardStacks.forEach(function (stack: CardStack, i: number) {
             const x = Math.round(i * cardHorizSpacing + (cardHeight - cardWidth) / 2);
             stack.setLeftTop(x, vertSeparatorWidth + vertSeparatorWidth + cardHeight, cardWidth, cardHeight);
@@ -554,7 +516,7 @@ class FreeCell {
             card.selected = false;
             destStack.pushCard(card);
 
-            this.currentAnimation = new MoveAnimation(card, currentPosition, card.rect.clone(), this.screenWidth);
+            this.currentAnimation = new MoveAnimation(card, currentPosition, card.rect.clone(), this.screenWidth * (this.animateFast ? 2 : 1.5));
         }
     }
 
@@ -617,12 +579,12 @@ class FreeCell {
         } else {
             // A card is currenlty selected, so see if it can be moved to the target
             let moved = false;
+            this.animateFast = false;
 
-            // const srcNumCards = this.selectedCardStack.getNumCards();
-            const [srcCardVal, srcSuit, srcSuitColor] = this.selectedCardStack.getCardValueSuitColor(-1);
+            const [srcCardVal, srcSuit] = this.selectedCardStack.getCardValueSuit(-1);
 
             const destNumCards = destStack.getNumCards();
-            const [destCardVal, destSuit, destSuitColor] = destStack.getCardValueSuitColor(-1);
+            const [destCardVal, destSuit] = destStack.getCardValueSuit(-1);
 
 
             let numFreeCells = 0;
@@ -654,6 +616,8 @@ class FreeCell {
                         i++;
                     }
                 }
+
+                this2.animateFast = tempStacks.length > 0;
 
                 this2.queueMove(this2.selectedCardStack!, destStack!);
                 for (let s of tempStacks) this2.queueMove(this2.freecellStacks[s], destStack!);
@@ -753,7 +717,7 @@ class FreeCell {
             this.redoStack = [];
         }
 
-        this.setCardRects();
+        this.reposition();
     }
 }
 
@@ -808,13 +772,12 @@ async function main() {
         if (canvasContainer.offsetWidth !== lastPageSize.width || canvasContainer.offsetHeight !== lastPageSize.height) {
             lastPageSize.width = canvasContainer.offsetWidth;
             lastPageSize.height = canvasContainer.offsetHeight;
-            //console.log("resolution change to %ox%o", canvasContainer.offsetWidth, canvasContainer.offsetHeight);
 
             gameCanvas.width = lastPageSize.width - 32;
             gameCanvas.height = lastPageSize.height - 32;
 
             freecell.screenWidth = lastPageSize.width - 32;
-            freecell.setCardRects();
+            freecell.reposition();
             freecell.requestRedraw();
         }
 
@@ -856,7 +819,6 @@ async function main() {
         button.addEventListener("mouseover", function () {
             const label = document.getElementById(this.id + "-tooltip");
             if (label) {
-                console.log(this.offsetTop);
                 label.style.top = this.offsetTop + "px";
                 label.showPopover();
             }
