@@ -174,6 +174,8 @@ class CardStack {
     cards = [];
     rect;
     yOffset = 0;
+    cardWidth = CardGraphicsWidth;
+    cardHeight = CardGraphicsHeight;
     constructor(left, top, stackSuit, type) {
         this.left = left;
         this.top = top;
@@ -189,15 +191,17 @@ class CardStack {
         this.cards = [];
     }
     _reposition() {
-        this.rect = new Rect(this.left, this.top, CardGraphicsWidth, CardGraphicsHeight + this.yOffset * this.cards.length);
+        this.rect = new Rect(this.left, this.top, this.cardWidth, this.cardHeight + this.yOffset * this.cards.length);
         for (let i = 0; i < this.cards.length; i++) {
-            this.cards[i].rect = new Rect(this.left, this.top + this.yOffset * i, CardGraphicsWidth, CardGraphicsHeight);
+            this.cards[i].rect = new Rect(this.left, this.top + this.yOffset * i, this.cardWidth, this.cardHeight);
         }
     }
-    setLeftTop(left, top) {
+    setLeftTop(left, top, width, height) {
         this.left = left;
         this.top = top;
-        this.yOffset = this.type === StackType.Regular ? CardGraphicsHeight / 4.8 : 0;
+        this.yOffset = this.type === StackType.Regular ? this.cardHeight / 4 : 0;
+        this.cardWidth = width;
+        this.cardHeight = height;
         this._reposition();
     }
     pushCard(card) {
@@ -286,11 +290,13 @@ class MoveAnimation {
     card;
     currentPosition;
     endPosition;
-    speed = 700;
-    constructor(card, currentPosition, endPosition) {
+    speed;
+    //public speed: number = 700;
+    constructor(card, currentPosition, endPosition, speed = 700) {
         this.card = card;
         this.currentPosition = currentPosition;
         this.endPosition = endPosition;
+        this.speed = speed;
     }
     process(delta) {
         // returns true if the animation is still ongoing, false if its completed
@@ -421,18 +427,21 @@ class FreeCell {
     // Set the position of all card stacks; this is done in response to a configure event
     setCardRects() {
         let cardHorizSpacing = this.screenWidth / 8;
+        const cardWidth = this.screenWidth / 10;
+        const cardHeight = cardWidth / 73 * 97;
+        let vertSeparatorWidth = VertSeparatorWidth * cardWidth / CardGraphicsWidth;
         this.mainCardStacks.forEach(function (stack, i) {
-            const x = Math.round(i * cardHorizSpacing + (CardGraphicsHeight - CardGraphicsWidth) / 2);
-            stack.setLeftTop(x, VertSeparatorWidth + VertSeparatorWidth + CardGraphicsHeight);
+            const x = Math.round(i * cardHorizSpacing + (cardHeight - cardWidth) / 2);
+            stack.setLeftTop(x, vertSeparatorWidth + vertSeparatorWidth + cardHeight, cardWidth, cardHeight);
         });
         cardHorizSpacing = this.screenWidth / 8.5;
         this.freecellStacks.forEach(function (stack, i) {
-            const x = Math.round(i * cardHorizSpacing + (CardGraphicsHeight - CardGraphicsWidth) / 2);
-            stack.setLeftTop(x, VertSeparatorWidth);
+            const x = Math.round(i * cardHorizSpacing + (cardHeight - cardWidth) / 2);
+            stack.setLeftTop(x, vertSeparatorWidth, cardWidth, cardHeight);
         });
         this.acesStacks.forEach(function (stack, i) {
-            const x = Math.round((i + NumFreeCells + 0.5) * cardHorizSpacing + (CardGraphicsHeight - CardGraphicsWidth) / 2);
-            stack.setLeftTop(x, VertSeparatorWidth);
+            const x = Math.round((i + NumFreeCells + 0.5) * cardHorizSpacing + (cardHeight - cardWidth) / 2);
+            stack.setLeftTop(x, vertSeparatorWidth, cardWidth, cardHeight);
         });
         this.requestRedraw();
     }
@@ -463,7 +472,7 @@ class FreeCell {
             card.cardIsMoving = true;
             card.selected = false;
             destStack.pushCard(card);
-            this.currentAnimation = new MoveAnimation(card, currentPosition, card.rect.clone());
+            this.currentAnimation = new MoveAnimation(card, currentPosition, card.rect.clone(), this.screenWidth);
         }
     }
     queueMove(srcStack, destStack) {

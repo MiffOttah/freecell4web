@@ -201,6 +201,8 @@ class CardStack {
     public cards: Card[] = [];
     public rect: Rect;
     public yOffset: number = 0;
+    public cardWidth = CardGraphicsWidth;
+    public cardHeight = CardGraphicsHeight;
 
     public constructor(
         public left: number,
@@ -224,19 +226,21 @@ class CardStack {
         this.rect = new Rect(
             this.left,
             this.top,
-            CardGraphicsWidth,
-            CardGraphicsHeight + this.yOffset * this.cards.length
+            this.cardWidth,
+            this.cardHeight + this.yOffset * this.cards.length
         );
 
         for (let i = 0; i < this.cards.length; i++) {
-            this.cards[i].rect = new Rect(this.left, this.top + this.yOffset * i, CardGraphicsWidth, CardGraphicsHeight);
+            this.cards[i].rect = new Rect(this.left, this.top + this.yOffset * i, this.cardWidth, this.cardHeight);
         }
     }
 
-    public setLeftTop(left: number, top: number) {
+    public setLeftTop(left: number, top: number, width: number, height: number) {
         this.left = left;
         this.top = top;
-        this.yOffset = this.type === StackType.Regular ? CardGraphicsHeight / 4.8 : 0;
+        this.yOffset = this.type === StackType.Regular ? this.cardHeight / 4 : 0;
+        this.cardWidth = width;
+        this.cardHeight = height;
         this._reposition();
     }
 
@@ -326,12 +330,13 @@ class CardStack {
 }
 
 class MoveAnimation {
-    public speed: number = 700;
+    //public speed: number = 700;
 
     public constructor(
         public card: Card,
         public currentPosition: Rect,
-        public endPosition: Rect
+        public endPosition: Rect,
+        public speed: number = 700
     ) { }
 
     public process(delta: number): boolean {
@@ -489,22 +494,27 @@ class FreeCell {
     // Set the position of all card stacks; this is done in response to a configure event
     public setCardRects() {
         let cardHorizSpacing = this.screenWidth / 8;
+        
+        const cardWidth = this.screenWidth / 10;
+        const cardHeight = cardWidth / 73 * 97;
 
+        let vertSeparatorWidth = VertSeparatorWidth * cardWidth / CardGraphicsWidth;
+        
         this.mainCardStacks.forEach(function (stack: CardStack, i: number) {
-            const x = Math.round(i * cardHorizSpacing + (CardGraphicsHeight - CardGraphicsWidth) / 2);
-            stack.setLeftTop(x, VertSeparatorWidth + VertSeparatorWidth + CardGraphicsHeight);
+            const x = Math.round(i * cardHorizSpacing + (cardHeight - cardWidth) / 2);
+            stack.setLeftTop(x, vertSeparatorWidth + vertSeparatorWidth + cardHeight, cardWidth, cardHeight);
         });
 
         cardHorizSpacing = this.screenWidth / 8.5;
 
         this.freecellStacks.forEach(function (stack: CardStack, i: number) {
-            const x = Math.round(i * cardHorizSpacing + (CardGraphicsHeight - CardGraphicsWidth) / 2);
-            stack.setLeftTop(x, VertSeparatorWidth);
+            const x = Math.round(i * cardHorizSpacing + (cardHeight - cardWidth) / 2);
+            stack.setLeftTop(x, vertSeparatorWidth, cardWidth, cardHeight);
         });
 
         this.acesStacks.forEach(function (stack: CardStack, i: number) {
-            const x = Math.round((i + NumFreeCells + 0.5) * cardHorizSpacing + (CardGraphicsHeight - CardGraphicsWidth) / 2);
-            stack.setLeftTop(x, VertSeparatorWidth);
+            const x = Math.round((i + NumFreeCells + 0.5) * cardHorizSpacing + (cardHeight - cardWidth) / 2);
+            stack.setLeftTop(x, vertSeparatorWidth, cardWidth, cardHeight);
         });
 
         this.requestRedraw();
@@ -544,7 +554,7 @@ class FreeCell {
             card.selected = false;
             destStack.pushCard(card);
 
-            this.currentAnimation = new MoveAnimation(card, currentPosition, card.rect.clone());
+            this.currentAnimation = new MoveAnimation(card, currentPosition, card.rect.clone(), this.screenWidth);
         }
     }
 
